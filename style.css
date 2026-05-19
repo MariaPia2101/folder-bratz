@@ -1,0 +1,88 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #111;
+    font-family: 'Inter', 'Roboto', Arial, sans-serif;
+    color: white;
+}
+
+#loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    z-index: 10;
+    background-color: rgba(0, 0, 0, 0.8);
+    padding: 20px 40px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+}
+
+#ui-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(30, 30, 30, 0.9);
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    z-index: 20;
+    max-width: 500px;
+    text-align: center;
+}
+
+#ui-container h2 {
+    margin-top: 0;
+    color: #87ceeb;
+}
+
+#ui-container p {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #ccc;
+    margin-bottom: 20px;
+}
+
+.file-input-group {
+    text-align: left;
+    margin-bottom: 15px;
+    background: rgba(0,0,0,0.3);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #444;
+}
+
+.file-input-group label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.file-input-group input {
+    width: 100%;
+}
+
+#startBtn {
+    margin-top: 20px;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    background-color: #87ceeb;
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+#startBtn:disabled {
+    background-color: #555;
+    color: #888;
+    cursor: not-allowed;
+}
+
+#startBtn:not(:disabled):hover {
+    background-color: #5bb3df;
+}

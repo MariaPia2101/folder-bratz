@@ -1,0 +1,236 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// Scene setup
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111111);
+
+// Camera setup
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+// Inizialmente la camera la mettiamo dietro al personaggio
+camera.position.set(0, 3, 8);
+
+// Renderer setup
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// Controls (li teniamo ma li limitiamo per evitare di attraversare i muri)
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.maxPolarAngle = Math.PI / 2 - 0.05; // Non andare sotto il pavimento
+controls.minDistance = 2; // Distanza minima dal personaggio
+controls.maxDistance = 15; // Distanza massima (per non uscire dalla mappa)
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+directionalLight.position.set(10, 20, 10);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 50;
+directionalLight.shadow.camera.left = -20;
+directionalLight.shadow.camera.right = 20;
+directionalLight.shadow.camera.top = 20;
+directionalLight.shadow.camera.bottom = -20;
+scene.add(directionalLight);
+
+// Variables for character and animation
+let character;
+let mixer;
+let walkAction;
+let idleAction;
+let currentAction;
+
+// Input state
+const keys = {
+    w: false,
+    a: false,
+    s: false,
+    d: false
+};
+
+document.addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase();
+    if (keys.hasOwnProperty(key)) keys[key] = true;
+});
+
+document.addEventListener('keyup', (e) => {
+    const key = e.key.toLowerCase();
+    if (keys.hasOwnProperty(key)) keys[key] = false;
+});
+
+// Loaders
+const loadingElement = document.getElementById('loading');
+const loadingManager = new THREE.LoadingManager(
+    () => {
+        if (loadingElement) loadingElement.style.display = 'none';
+    },
+    (itemUrl, itemsLoaded, itemsTotal) => {
+        if (loadingElement) {
+            loadingElement.innerText = `Caricamento... ${Math.round((itemsLoaded / itemsTotal) * 100)}%`;
+        }
+    }
+);
+
+const gltfLoader = new GLTFLoader(loadingManager);
+
+// Load Environment
+gltfLoader.load(
+    'assets/3d/environment.glb',
+    (gltf) => {
+        const environment = gltf.scene;
+        environment.traverse((child) => {
+            if (child.isMesh) {
+                child.receiveShadow = true;
+                child.castShadow = true;
+            }
+        });
+        scene.add(environment);
+    }
+);
+
+// Load Character
+gltfLoader.load(
+    'assets/3d/character.glb',
+    (gltf) => {
+        character = gltf.scene;
+        character.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+        
+        // Regoliamo l'altezza del personaggio. Modifica questo valore se necessario.
+        // Calcoliamo la bounding box per posizionarlo esattamente a terra
+        const box = new THREE.Box3().setFromObject(character);
+        if (!box.isEmpty() && isFinite(box.min.y)) {
+            // Assicuriamoci che i piedi tocchino lo zero (Y=0)
+            character.position.y = -box.min.y;
+        } else {
+            character.position.y = 0;
+        }
+        
+        scene.add(character);
+
+        // Setup animations
+        if (gltf.animations && gltf.animations.length > 0) {
+            mixer = new THREE.AnimationMixer(character);
+            
+            // Proviamo a trovare animazioni di walk/idle dai nomi (altrimenti usiamo le prime)
+            const idleClip = THREE.AnimationClip.findByName(gltf.animations, 'Idle') || gltf.animations[0];
+            const walkClip = THREE.AnimationClip.findByName(gltf.animations, 'Walk') || gltf.animations[1] || gltf.animations[0];
+            
+            if (idleClip) idleAction = mixer.clipAction(idleClip);
+            if (walkClip) walkAction = mixer.clipAction(walkClip);
+            
+            if (idleAction) {
+                idleAction.play();
+                currentAction = idleAction;
+            }
+        }
+        
+        // Set camera target to character
+        controls.target.copy(character.position);
+    }
+);
+
+// Movement settings
+const moveSpeed = 5.0; // Unità al secondo
+const rotationSpeed = 5.0; // Radianti al secondo
+const clock = new THREE.Clock();
+
+// Window resize handler
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Limiti della mappa (modificali in base alla dimensione reale del tuo ambiente)
+const mapBounds = {
+    minX: -15, maxX: 15,
+    minZ: -15, maxZ: 15
+};
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+
+    if (mixer) mixer.update(delta);
+
+    if (character) {
+        let isMoving = false;
+        
+        // Calcola la direzione basata sull'input
+        const moveDir = new THREE.Vector3(0, 0, 0);
+        
+        if (keys.w) moveDir.z -= 1;
+        if (keys.s) moveDir.z += 1;
+        if (keys.a) moveDir.x -= 1;
+        if (keys.d) moveDir.x += 1;
+        
+        if (moveDir.lengthSq() > 0) {
+            isMoving = true;
+            moveDir.normalize();
+            
+            // Calcola l'angolo in base alla rotazione della camera
+            const cameraAngle = Math.atan2(camera.position.x - character.position.x, camera.position.z - character.position.z);
+            
+            // L'angolo desiderato del personaggio
+            const targetAngle = Math.atan2(moveDir.x, moveDir.z) + cameraAngle;
+            
+            // Smooth rotation del personaggio
+            let diff = targetAngle - character.rotation.y;
+            // Normalizza l'angolo per ruotare dalla parte più corta
+            diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+            character.rotation.y += diff * rotationSpeed * delta;
+            
+            // Movimento reale nello spazio
+            const moveX = Math.sin(character.rotation.y) * moveSpeed * delta;
+            const moveZ = Math.cos(character.rotation.y) * moveSpeed * delta;
+            
+            // Nuova posizione potenziale
+            const nextX = character.position.x + moveX;
+            const nextZ = character.position.z + moveZ;
+            
+            // Collision detection molto basilare (Muri invisibili)
+            if (nextX > mapBounds.minX && nextX < mapBounds.maxX) {
+                character.position.x = nextX;
+            }
+            if (nextZ > mapBounds.minZ && nextZ < mapBounds.maxZ) {
+                character.position.z = nextZ;
+            }
+        }
+        
+        // Gestione transizione animazioni
+        if (isMoving && walkAction && currentAction !== walkAction) {
+            if (currentAction) currentAction.fadeOut(0.2);
+            walkAction.reset().fadeIn(0.2).play();
+            currentAction = walkAction;
+        } else if (!isMoving && idleAction && currentAction !== idleAction) {
+            if (currentAction) currentAction.fadeOut(0.2);
+            idleAction.reset().fadeIn(0.2).play();
+            currentAction = idleAction;
+        }
+        
+        // Mantieni la camera in target sul personaggio
+        controls.target.set(character.position.x, character.position.y + 1, character.position.z);
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+animate();
