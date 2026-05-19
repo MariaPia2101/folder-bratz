@@ -50,6 +50,7 @@ let mixer;
 let walkAction;
 let idleAction;
 let currentAction;
+let characterHeightOffset = 0; // Salva l'offset per mantenere i piedi a terra
 
 // Input state
 const keys = {
@@ -93,6 +94,7 @@ gltfLoader.load(
             if (child.isMesh) {
                 child.receiveShadow = true;
                 child.castShadow = true;
+                collidableMeshes.push(child); // Aggiungi la mesh per le collisioni
             }
         });
         scene.add(environment);
@@ -115,8 +117,9 @@ gltfLoader.load(
         // Calcoliamo la bounding box per posizionarlo esattamente a terra
         const box = new THREE.Box3().setFromObject(character);
         if (!box.isEmpty() && isFinite(box.min.y)) {
+            characterHeightOffset = -box.min.y;
             // Assicuriamoci che i piedi tocchino lo zero (Y=0)
-            character.position.y = -box.min.y;
+            character.position.y = characterHeightOffset;
         } else {
             character.position.y = 0;
         }
@@ -145,10 +148,12 @@ gltfLoader.load(
     }
 );
 
-// Movement settings
+// Movement and Physics settings
 const moveSpeed = 5.0; // Unità al secondo
 const rotationSpeed = 5.0; // Radianti al secondo
 const clock = new THREE.Clock();
+const raycaster = new THREE.Raycaster();
+const collidableMeshes = [];
 
 // Window resize handler
 window.addEventListener('resize', () => {
@@ -156,12 +161,6 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// Limiti della mappa (modificali in base alla dimensione reale del tuo ambiente)
-const mapBounds = {
-    minX: -15, maxX: 15,
-    minZ: -15, maxZ: 15
-};
 
 // Animation loop
 function animate() {
@@ -201,17 +200,39 @@ function animate() {
             const moveX = Math.sin(character.rotation.y) * moveSpeed * delta;
             const moveZ = Math.cos(character.rotation.y) * moveSpeed * delta;
             
-            // Nuova posizione potenziale
-            const nextX = character.position.x + moveX;
-            const nextZ = character.position.z + moveZ;
+            // Raycasting Frontale per i muri
+            const forwardDir = new THREE.Vector3(moveX, 0, moveZ).normalize();
+            // Lancia il raggio dal petto del personaggio
+            const originFront = new THREE.Vector3(character.position.x, character.position.y + 1, character.position.z);
+            raycaster.set(originFront, forwardDir);
             
-            // Collision detection molto basilare (Muri invisibili)
-            if (nextX > mapBounds.minX && nextX < mapBounds.maxX) {
-                character.position.x = nextX;
+            const frontIntersects = raycaster.intersectObjects(collidableMeshes, false);
+            
+            let canMove = true;
+            // Se colpisce un ostacolo a meno di 0.5 metri (raggio del personaggio), bloccati
+            if (frontIntersects.length > 0 && frontIntersects[0].distance < 0.5) {
+                canMove = false;
             }
-            if (nextZ > mapBounds.minZ && nextZ < mapBounds.maxZ) {
-                character.position.z = nextZ;
+            
+            if (canMove) {
+                character.position.x += moveX;
+                character.position.z += moveZ;
             }
+        }
+        
+        // Raycasting verso il basso per Pavimento e Scale
+        // Lancia un raggio partendo da sopra la testa verso il basso
+        const originDown = new THREE.Vector3(character.position.x, character.position.y + 2, character.position.z);
+        const downDir = new THREE.Vector3(0, -1, 0);
+        raycaster.set(originDown, downDir);
+        
+        const downIntersects = raycaster.intersectObjects(collidableMeshes, false);
+        if (downIntersects.length > 0) {
+            // Punto di impatto rilevato + offset calcolato precedentemente per tenere i piedi a terra
+            const targetY = downIntersects[0].point.y + characterHeightOffset;
+            
+            // Interpolazione lineare per salire gradini in modo fluido senza scatti bruschi
+            character.position.y += (targetY - character.position.y) * 10 * delta;
         }
         
         // Gestione transizione animazioni
