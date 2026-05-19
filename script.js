@@ -8,8 +8,8 @@ scene.background = new THREE.Color(0x111111);
 
 // Camera setup
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-// Inizialmente la camera la mettiamo dietro al personaggio
-camera.position.set(0, 3, 8);
+// Avviciniamo molto la camera per essere sicuri che inizi ALL'INTERNO della stanza
+camera.position.set(0, 1.5, 2.5);
 
 // Renderer setup
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -24,8 +24,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.maxPolarAngle = Math.PI / 2 - 0.05; // Non andare sotto il pavimento
-controls.minDistance = 2; // Distanza minima dal personaggio
-controls.maxDistance = 15; // Distanza massima (per non uscire dalla mappa)
+controls.minDistance = 1; // Distanza minima dal personaggio
+controls.maxDistance = 3.5; // Distanza massima ridotta per non uscire dalla stanza
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
