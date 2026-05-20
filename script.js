@@ -27,11 +27,11 @@ controls.maxPolarAngle = Math.PI / 2 - 0.05; // Non andare sotto il pavimento
 controls.minDistance = 1; // Distanza minima dal personaggio
 controls.maxDistance = 3.5; // Distanza massima ridotta per non uscire dalla stanza
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// Lighting (aumentata intensità per debug)
+const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 3.5);
 directionalLight.position.set(10, 20, 10);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 2048;
@@ -51,6 +51,7 @@ let walkAction;
 let idleAction;
 let currentAction;
 let characterHeightOffset = 0; // Salva l'offset per mantenere i piedi a terra
+let safeSpawnPoint = new THREE.Vector3(0, 10, 0); // Posizione di sicurezza di default
 
 // Input state
 const keys = {
@@ -89,6 +90,7 @@ const gltfLoader = new GLTFLoader(loadingManager);
 gltfLoader.load(
     'assets/3d/ambiente.glb',
     (gltf) => {
+        console.log("✅ Ambiente 3D caricato con successo!");
         const environment = gltf.scene;
         environment.traverse((child) => {
             if (child.isMesh) {
@@ -98,6 +100,30 @@ gltfLoader.load(
             }
         });
         scene.add(environment);
+
+        // Debug & Protezione: Calcola la BoundingBox per trovare il centro e prevenire lo spawn nei muri
+        const envBox = new THREE.Box3().setFromObject(environment);
+        if (!envBox.isEmpty()) {
+            const center = envBox.getCenter(new THREE.Vector3());
+            const size = envBox.getSize(new THREE.Vector3());
+            console.log(`🔍 BoundingBox Ambiente -> Centro: X=${center.x.toFixed(2)}, Y=${center.y.toFixed(2)}, Z=${center.z.toFixed(2)} | Dimensioni: X=${size.x.toFixed(2)}, Y=${size.y.toFixed(2)}, Z=${size.z.toFixed(2)}`);
+            
+            // Impostiamo il punto di spawn al centro (su X e Z) e al di sopra dell'ambiente su Y
+            // per far atterrare il personaggio in modo sicuro
+            safeSpawnPoint.set(center.x, envBox.max.y + 5, center.z);
+            
+            // Se il personaggio è già stato caricato, aggiorniamo subito la sua posizione
+            if (character) {
+                character.position.copy(safeSpawnPoint);
+                camera.position.set(safeSpawnPoint.x, safeSpawnPoint.y + 2, safeSpawnPoint.z + 5);
+                controls.target.copy(character.position);
+                controls.update();
+            }
+        }
+    },
+    undefined,
+    (error) => {
+        console.error("❌ ERRORE CRITICO: Impossibile caricare l'ambiente 3D (ambiente.glb).", error);
     }
 );
 
@@ -105,6 +131,7 @@ gltfLoader.load(
 gltfLoader.load(
     'assets/3d/character.glb',
     (gltf) => {
+        console.log("✅ Personaggio caricato con successo!");
         character = gltf.scene;
         character.traverse((child) => {
             if (child.isMesh) {
@@ -113,38 +140,38 @@ gltfLoader.load(
             }
         });
         
-        // Regoliamo l'altezza del personaggio. Modifica questo valore se necessario.
-        // Calcoliamo la bounding box per posizionarlo esattamente a terra
+        // Regoliamo l'altezza del personaggio
         const box = new THREE.Box3().setFromObject(character);
         if (!box.isEmpty() && isFinite(box.min.y)) {
             characterHeightOffset = -box.min.y;
-            // Assicuriamoci che i piedi tocchino lo zero (Y=0)
-            character.position.y = characterHeightOffset;
-        } else {
-            character.position.y = 0;
         }
+        
+        // Applichiamo il safe spawn point (calcolato dall'ambiente o quello di default)
+        character.position.copy(safeSpawnPoint);
         
         scene.add(character);
 
         // Setup animations
         if (gltf.animations && gltf.animations.length > 0) {
             mixer = new THREE.AnimationMixer(character);
-            
-            // Proviamo a trovare animazioni di walk/idle dai nomi (altrimenti usiamo le prime)
             const idleClip = THREE.AnimationClip.findByName(gltf.animations, 'Idle') || gltf.animations[0];
             const walkClip = THREE.AnimationClip.findByName(gltf.animations, 'Walk') || gltf.animations[1] || gltf.animations[0];
-            
             if (idleClip) idleAction = mixer.clipAction(idleClip);
             if (walkClip) walkAction = mixer.clipAction(walkClip);
-            
             if (idleAction) {
                 idleAction.play();
                 currentAction = idleAction;
             }
         }
         
-        // Set camera target to character
+        // Set camera target to character and move camera
         controls.target.copy(character.position);
+        camera.position.set(character.position.x, character.position.y + 2, character.position.z + 5);
+        controls.update();
+    },
+    undefined,
+    (error) => {
+        console.error("❌ ERRORE CRITICO: Impossibile caricare il personaggio (character.glb).", error);
     }
 );
 
