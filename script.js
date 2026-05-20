@@ -17,6 +17,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
 // Controls (li teniamo ma li limitiamo per evitare di attraversare i muri)
@@ -27,11 +28,14 @@ controls.maxPolarAngle = Math.PI / 2 - 0.05; // Non andare sotto il pavimento
 controls.minDistance = 1; // Distanza minima dal personaggio
 controls.maxDistance = 3.5; // Distanza massima ridotta per non uscire dalla stanza
 
-// Lighting (aumentata intensità per debug)
-const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
+// Lighting (aggiornata per materiali PBR - ridotta per non bruciare i colori bianchi)
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 3.5);
+const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+scene.add(hemisphereLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
 directionalLight.position.set(10, 20, 10);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 2048;
@@ -92,39 +96,59 @@ gltfLoader.load(
     (gltf) => {
         console.log("✅ Ambiente 3D caricato con successo!");
         const environment = gltf.scene;
+        
+        environment.visible = true;
+        
         environment.traverse((child) => {
             if (child.isMesh) {
+                child.visible = true;
                 child.receiveShadow = true;
                 child.castShadow = true;
                 
-                // FIX: Forza il rendering su entrambi i lati per evitare che i muri siano invisibili 
-                // a causa delle normali invertite (backface culling)
+                // FIX MATERIALI: Manteniamo il materiale originale con tutte le sue texture e colori,
+                // ma forziamo parametri sicuri per evitare che siano invisibili, neri o bucati.
                 if (child.material) {
+                    const fixMaterial = (m) => {
+                        m.side = THREE.DoubleSide;
+                        m.transparent = false; // Disattiva trasparenze rotte
+                        m.opacity = 1;
+                        if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
+                            m.roughness = 0.8; // Evita che siano specchi neri
+                            m.metalness = 0.1;
+                        }
+                        m.needsUpdate = true;
+                    };
+
                     if (Array.isArray(child.material)) {
-                        child.material.forEach(m => { m.side = THREE.DoubleSide; m.needsUpdate = true; });
+                        child.material.forEach(fixMaterial);
                     } else {
-                        child.material.side = THREE.DoubleSide;
-                        child.material.needsUpdate = true;
+                        fixMaterial(child.material);
                     }
                 }
                 
-                collidableMeshes.push(child); // Aggiungi la mesh per le collisioni
+                collidableMeshes.push(child);
             }
         });
         scene.add(environment);
 
-        // Debug & Protezione: Calcola la BoundingBox per trovare il centro e prevenire lo spawn nei muri
+        // Centratura automatica dell'ambiente all'origine
         const envBox = new THREE.Box3().setFromObject(environment);
         if (!envBox.isEmpty()) {
             const center = envBox.getCenter(new THREE.Vector3());
-            const size = envBox.getSize(new THREE.Vector3());
-            console.log(`🔍 BoundingBox Ambiente -> Centro: X=${center.x.toFixed(2)}, Y=${center.y.toFixed(2)}, Z=${center.z.toFixed(2)} | Dimensioni: X=${size.x.toFixed(2)}, Y=${size.y.toFixed(2)}, Z=${size.z.toFixed(2)}`);
+            const minY = envBox.min.y;
             
-            // Impostiamo il punto di spawn al centro (su X e Z) e al di sopra dell'ambiente su Y
-            // per far atterrare il personaggio in modo sicuro
-            safeSpawnPoint.set(center.x, envBox.max.y + 5, center.z);
+            // Spostiamo FISICAMENTE l'ambiente in modo che il suo pavimento poggi esattamente su Y=0
+            // e che il suo centro si trovi esattamente su X=0 e Z=0.
+            environment.position.x -= center.x;
+            environment.position.y -= minY;
+            environment.position.z -= center.z;
             
-            // Se il personaggio è già stato caricato, aggiorniamo subito la sua posizione
+            // Aggiorniamo i calcoli di collisione (necessario dopo aver mosso l'ambiente)
+            environment.updateMatrixWorld(true);
+
+            // Ora che la stanza è perfettamente al centro, spawniamo il personaggio a (0, 2, 0)
+            safeSpawnPoint.set(0, 2, 0);
+            
             if (character) {
                 character.position.copy(safeSpawnPoint);
                 camera.position.set(safeSpawnPoint.x, safeSpawnPoint.y + 2, safeSpawnPoint.z + 5);
