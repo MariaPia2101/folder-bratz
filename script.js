@@ -96,6 +96,18 @@ gltfLoader.load(
             if (child.isMesh) {
                 child.receiveShadow = true;
                 child.castShadow = true;
+                
+                // FIX: Forza il rendering su entrambi i lati per evitare che i muri siano invisibili 
+                // a causa delle normali invertite (backface culling)
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(m => { m.side = THREE.DoubleSide; m.needsUpdate = true; });
+                    } else {
+                        child.material.side = THREE.DoubleSide;
+                        child.material.needsUpdate = true;
+                    }
+                }
+                
                 collidableMeshes.push(child); // Aggiungi la mesh per le collisioni
             }
         });
