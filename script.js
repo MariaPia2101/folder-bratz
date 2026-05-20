@@ -87,7 +87,7 @@ const gltfLoader = new GLTFLoader(loadingManager);
 
 // Load Environment
 gltfLoader.load(
-    'assets/3d/environment.glb',
+    'assets/3d/ambiente.glb',
     (gltf) => {
         const environment = gltf.scene;
         environment.traverse((child) => {
