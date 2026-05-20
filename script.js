@@ -28,11 +28,11 @@ controls.maxPolarAngle = Math.PI / 2 - 0.05; // Non andare sotto il pavimento
 controls.minDistance = 1; // Distanza minima dal personaggio
 controls.maxDistance = 3.5; // Distanza massima ridotta per non uscire dalla stanza
 
-// Lighting (aggiornata per materiali PBR - ridotta per non bruciare i colori bianchi)
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+// Lighting (ulteriormente ridotta per prevenire l'effetto bianco totale)
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
 scene.add(ambientLight);
 
-const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
 scene.add(hemisphereLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -131,30 +131,18 @@ gltfLoader.load(
         });
         scene.add(environment);
 
-        // Centratura automatica dell'ambiente all'origine
-        const envBox = new THREE.Box3().setFromObject(environment);
-        if (!envBox.isEmpty()) {
-            const center = envBox.getCenter(new THREE.Vector3());
-            const minY = envBox.min.y;
-            
-            // Spostiamo FISICAMENTE l'ambiente in modo che il suo pavimento poggi esattamente su Y=0
-            // e che il suo centro si trovi esattamente su X=0 e Z=0.
-            environment.position.x -= center.x;
-            environment.position.y -= minY;
-            environment.position.z -= center.z;
-            
-            // Aggiorniamo i calcoli di collisione (necessario dopo aver mosso l'ambiente)
-            environment.updateMatrixWorld(true);
-
-            // Ora che la stanza è perfettamente al centro, spawniamo il personaggio a (0, 2, 0)
-            safeSpawnPoint.set(0, 2, 0);
-            
-            if (character) {
-                character.position.copy(safeSpawnPoint);
-                camera.position.set(safeSpawnPoint.x, safeSpawnPoint.y + 2, safeSpawnPoint.z + 5);
-                controls.target.copy(character.position);
-                controls.update();
-            }
+        // Evitiamo spostamenti automatici che potrebbero essere sfalsati da vertici invisibili
+        // L'ambiente rimane alle coordinate originali di esportazione.
+        
+        // Impostiamo uno spawn di sicurezza vicino all'origine.
+        // Se il pavimento originale è a Y=0, il personaggio cadrà correttamente.
+        safeSpawnPoint.set(0, 3, 0);
+        
+        if (character) {
+            character.position.copy(safeSpawnPoint);
+            camera.position.set(safeSpawnPoint.x, safeSpawnPoint.y + 2, safeSpawnPoint.z + 5);
+            controls.target.copy(character.position);
+            controls.update();
         }
     },
     undefined,
